@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weekly Notes</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table,
+        th,
+        td {
+            border: 1px solid black;
+        }
+
+        th,
+        td {
+            padding: 8px;
+            text-align: left;
+        }
+
+        .student-number,
+        .student-name {
+            text-align: center;
+        }
+
+        .points-column {
+            text-align: center;
+            font-weight: bold;
+            color: black;
+        }
+
+        .check-ins-column {
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .full-size-checkbox {
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .editable {
+            text-align: left;
+            min-height: 50px;
+        }
+
+        .button-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            justify-content: center;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 5px;
+        }
+
+        #searchBox {
+            margin-bottom: 20px;
+            padding: 8px;
+            font-size: 16px;
+            width: 300px;
+        }
+
+        #popupBackground {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1;
+        }
+
+        #notesHistoryPopup,
+        #checkInsPopup,
+        #playingPopup,
+        #emailPopup {
+            display: none;
+            position: fixed;
+            top: 150px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: white;
+            padding: 20px;
+            border: 1px solid black;
+            z-index: 2;
+        }
+
+        .pale-blue {
+            background-color: #add8e6;
+        }
+
+        .pale-green {
+            background-color: #90ee90;
+        }
+
+        .pale-red {
+            background-color: #ffcccb;
+        }
+
+        .pale-yellow {
+            background-color: #ffffcc;
+        }
+
+        .grey {
+            background-color: grey;
+        }
+
+        .red {
+            background-color: #ffcccb;
+        }
+
+        .yellow {
+            background-color: #ffffcc;
+        }
+
+        .green {
+            background-color: #90ee90;
+        }
+
+        #areasOfFocusSelect {
+            width: 100%;
+            height: 200px;
+            /* Increase the height to fit more options */
+        }
+    </style>
+    <script src="https://apis.google.com/js/api.js"></script>
+</head>
+
+<body>
+    <h1>Weekly Notes</h1>
+    <input type="text" id="searchBox" placeholder="Enter student number or name">
+    <table id="notesTable">
+        <thead>
+            <tr>
+                <th>Student Number</th>
+                <th>Student Name</th>
+                <th>Points</th>
+                <th>Check-Ins</th>
+                <th>Notes</th>
+                <th>Teacher's Notes (Public)</th>
+                <th>Comments (Private)</th>
+                <th>Upcoming Event</th>
+                <th>Folder Lent</th>
+                <th>Action</th>
+            </tr>
+        </thead>
+        <tbody>
+        </tbody>
+    </table>
+
+    <div id="popupBackground"></div>
+    <div id="notesHistoryPopup">
+        <h2>Notes History</h2>
+        <div id="notesHistoryContent"></div>
+        <button onclick="closeNotesHistory()">Close</button>
+    </div>
+    <div id="checkInsPopup">
+        <h2>Check-Ins</h2>
+        <div id="checkInsContent"></div>
+        <button onclick="updateMinimumPractice()">Update Minimum Practice</button>
+        <button onclick="closeCheckIns()" style="float: right;">Close</button>
+    </div>
+    <div id="playingPopup">
+        <h2>Playing</h2>
+        <div id="playingContent"></div>
+        <button onclick="updatePlaying()">Update</button>
+        <button onclick="closePlaying()" style="float: right;">Close</button>
+    </div>
+    <div id="emailPopup">
+        <h2>Email</h2>
+        <div id="emailContent"></div>
+        <button onclick="sendEmail()">Send Email</button>
+        <button onclick="closeEmail()" style="float: right;">Close</button>
+    </div>
+
+    <script>
+        const API_KEY = 'AIzaSyBy-l0TqcOFFxT8ipVnAIvTc_gaDjfNqDs';
+        const DISCOVERY_DOCS = ["https://sheets.googleapis.com/$discovery/rest?version=v4"];
+        let allRows = [];
+        let otherRows = [];
+        let notesHistory = [];
+        let contactInfo = [];
+        let tempNotes = {};
+
+        async function initializeGapiClient() {
+            try {
+                await gapi.client.init({
+                    apiKey: API_KEY,
+                    discoveryDocs: DISCOVERY_DOCS,
+                });
+                await fetchSheetData();
+            } catch (error) {
+                console.error("Error initializing GAPI client", error);
+                alert('Error initializing GAPI client: ' + JSON.stringify(error));
+            }
+        }
+
+        async function fetchSheetData() {
+            const sheetId = '1Uh9jIgUB9t19SZmcqU9SoicwgZDp1MLKuK8I0JQBvD8';
+            const ranges = [
+                'Weekly Notes!A1:BJ152',
+                'Other!A1:T152',
+                'Notes History!A1:D',
+                'Contact Info!A1:C'
+            ];
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.batchGet({
+                    spreadsheetId: sheetId,
+                    ranges: ranges,
+                });
+                const sheets = response.result.valueRanges;
+                allRows = sheets[0].values;
+                otherRows = sheets[1].values;
+                notesHistory = sheets[2].values;
+                contactInfo = sheets[3].values;
+                displayRows(allRows.slice(2), otherRows.slice(1));
+            } catch (error) {
+                console.error("Error fetching sheet data", error);
+                alert('Error fetching sheet data: ' + JSON.stringify(error));
+            }
+        }
+
+        function displayRows(rows, otherRows) {
+            const tableBody = document.querySelector('#notesTable tbody');
+            tableBody.innerHTML = '';
+
+            rows.forEach((row) => {
+                const studentNumber = row[0];
+                const studentName = row[6];
+                const points = row[1];
+                const checkIns = row[4];
+                const notes = tempNotes[`${studentNumber}-61`] || row[61];
+                const publicNotes = tempNotes[`${studentNumber}-2`] || row[2];
+                const privateComments = tempNotes[`${studentNumber}-3`] || row[3];
+                const otherRow = otherRows.find(otherRow => otherRow[0] === studentNumber);
+                const upcomingEvent = otherRow ? otherRow[19] : '';
+                const folderLent = otherRow ? otherRow[11] : '';
+                const isRed = folderLent && folderLent.toLowerCase().includes('red');
+                const folderLentColor = isRed ? 'pale-red' : '';
+
+                if (studentNumber && studentName) {
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td class="student-number">${studentNumber}</td>
+                        <td class="student-name">${studentName}</td>
+                        <td class="points-column" data-points="${points}">${points}</td>
+                        <td class="check-ins-column" onclick="showCheckIns('${studentNumber}')">${checkIns}</td>
+                        <td class="editable" contenteditable="true" data-student-number="${studentNumber}" data-col-index="61">${notes}</td>
+                        <td class="editable" contenteditable="true" data-student-number="${studentNumber}" data-col-index="2">${publicNotes}</td>
+                        <td class="editable" contenteditable="true" data-student-number="${studentNumber}" data-col-index="3">${privateComments}</td>
+                        <td class="upcoming-event-column" data-upcoming-event="${upcomingEvent}">${upcomingEvent}</td>
+                        <td><input type="checkbox" class="full-size-checkbox" data-student-number="${studentNumber}" data-col-index="11" ${folderLent && folderLent.startsWith('Yes') ? 'checked' : ''} style="background-color: ${folderLentColor};"></td>
+                        <td class="button-container">
+                            <div class="button-group">
+                                <button onclick="updateNotes('${studentNumber}')">Update</button>
+                                <button onclick="showNotesHistory('${studentNumber}')">History</button>
+                            </div>
+                            <div class="button-group">
+                                <button onclick="showPlaying('${studentNumber}')">Playing</button>
+                                <button onclick="showEmail('${studentNumber}', '${publicNotes}')">Email</button>
+                            </div>
+                        </td>
+                    `;
+                    tableBody.appendChild(tr);
+                }
+            });
+
+            colorPointsColumn();
+            colorUpcomingEvents();
+            addFolderLentListeners();
+            addUpdateListeners();
+            addEditableListeners();
+        }
+
+        function colorPointsColumn() {
+            const pointsCells = document.querySelectorAll('.points-column');
+            pointsCells.forEach(cell => {
+                const points = parseInt(cell.getAttribute('data-points'), 10);
+                cell.style.color = 'black';
+                cell.classList.remove('pale-yellow', 'pale-green', 'pale-blue', 'pale-red');
+                if (points >= 100 && points <= 245) {
+                    cell.classList.add('pale-yellow');
+                } else if (points >= 250 && points <= 495) {
+                    cell.classList.add('pale-green');
+                } else if (points >= 500 && points <= 995) {
+                    cell.classList.add('pale-blue');
+                } else if (points >= 1000 && points <= 1995) {
+                    cell.classList.add('pale-red');
+                } else if (points >= 2000) {
+                    cell.classList.add('pale-red');
+                }
+            });
+        }
+
+        function colorUpcomingEvents() {
+            const upcomingEventCells = document.querySelectorAll('.upcoming-event-column');
+            upcomingEventCells.forEach(cell => {
+                const eventText = cell.getAttribute('data-upcoming-event').toLowerCase();
+                cell.style.color = 'black'; // Reset color
+                if (eventText === 'yes') {
+                    cell.style.color = 'green';
+                } else if (eventText === 'no') {
+                    cell.style.color = 'red';
+                } else if (eventText === 'maybe') {
+                    cell.style.color = 'yellow';
+                }
+            });
+        }
+
+        function addFolderLentListeners() {
+            const folderLentCheckboxes = document.querySelectorAll('.full-size-checkbox');
+            folderLentCheckboxes.forEach(checkbox => {
+                if (checkbox.style.backgroundColor === 'pale-red') {
+                    checkbox.checked = true;
+                }
+
+                checkbox.addEventListener('change', async (event) => {
+                    const studentNumber = event.target.getAttribute('data-student-number');
+                    const sheetId = '1Uh9jIgUB9t19SZmcqU9SoicwgZDp1MLKuK8I0JQBvD8';
+                    const folderLentValue = event.target.checked ? 'Yes' : 'No';
+
+                    if (event.target.checked) {
+                        const returnDate = prompt('Enter return date (MM/DD/YY):');
+                        if (returnDate) {
+                            const dateCell = `Other!M${getStudentRowIndex(studentNumber)}`;
+                            await gapi.client.sheets.spreadsheets.values.update({
+                                spreadsheetId: sheetId,
+                                range: dateCell,
+                                valueInputOption: 'RAW',
+                                resource: {
+                                    values: [[returnDate]]
+                                }
+                            });
+                            event.target.style.backgroundColor = isPastDate(returnDate) ? 'pale-red' : '';
+                        }
+                    } else {
+                        const dateCell = `Other!M${getStudentRowIndex(studentNumber)}`;
+                        await gapi.client.sheets.spreadsheets.values.update({
+                            spreadsheetId: sheetId,
+                            range: dateCell,
+                            valueInputOption: 'RAW',
+                            resource: {
+                                values: [['']]
+                            }
+                        });
+                        event.target.style.backgroundColor = '';
+                    }
+
+                    await gapi.client.sheets.spreadsheets.values.update({
+                        spreadsheetId: sheetId,
+                        range: `Other!L${getStudentRowIndex(studentNumber)}`,
+                        valueInputOption: 'RAW',
+                        resource: {
+                            values: [[folderLentValue]]
+                        }
+                    });
+                });
+            });
+        }
+
+        function addUpdateListeners() {
+            const updateButtons = document.querySelectorAll('button[onclick^="updateNotes"]');
+            updateButtons.forEach(button => {
+                button.addEventListener('click', function (event) {
+                    const studentNumber = event.target.getAttribute('onclick').match(/updateNotes\('([^']+)'\)/)[1];
+                    updateNotes(studentNumber);
+                });
+            });
+        }
+
+        function addEditableListeners() {
+            const editableCells = document.querySelectorAll('.editable');
+            editableCells.forEach(cell => {
+                cell.addEventListener('input', function (event) {
+                    const studentNumber = event.target.getAttribute('data-student-number');
+                    const colIndex = event.target.getAttribute('data-col-index');
+                    tempNotes[`${studentNumber}-${colIndex}`] = event.target.innerText; // Store notes in tempNotes
+                });
+            });
+        }
+
+        function isPastDate(dateString) {
+            if (!dateString) return false;
+            const today = new Date();
+            const date = new Date(dateString);
+            return date < today;
+        }
+
+        document.getElementById('searchBox').addEventListener('input', function () {
+            const searchValue = this.value.trim().toLowerCase();
+            if (searchValue) {
+                const filteredRows = allRows.slice(2).filter(row => {
+                    const studentNumber = row[0] ? row[0].toString().toLowerCase() : '';
+                    const studentName = row[6] ? row[6].toString().toLowerCase() : '';
+                    return studentNumber.includes(searchValue) || studentName.includes(searchValue);
+                });
+                displayRows(filteredRows, otherRows.slice(1));
+            } else {
+                displayRows(allRows.slice(2), otherRows.slice(1));
+            }
+        });
+
+        async function updateNotes(studentNumber) {
+            const studentRowIndex = getStudentRowIndex(studentNumber);
+            if (studentRowIndex === -1) {
+                alert('Student not found.');
+                return;
+            }
+            const notesCell = document.querySelector(`td[data-student-number="${studentNumber}"][data-col-index="61"]`);
+            const publicNotesCell = document.querySelector(`td[data-student-number="${studentNumber}"][data-col-index="2"]`);
+            const privateCommentsCell = document.querySelector(`td[data-student-number="${studentNumber}"][data-col-index="3"]`);
+
+            const newNotes = notesCell.innerText;
+            const newPublicNotes = publicNotesCell.innerText;
+            const newPrivateComments = privateCommentsCell.innerText;
+
+            const data = [
+                { range: `Weekly Notes!BJ${studentRowIndex}`, values: [[newNotes]] },
+                { range: `Weekly Notes!C${studentRowIndex}`, values: [[newPublicNotes]] },
+                { range: `Weekly Notes!D${studentRowIndex}`, values: [[newPrivateComments]] }
+            ];
+
+            try {
+                const response = await fetch('http://localhost:3000/update-notes', { // Change this to your actual backend URL if different
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                alert('Notes updated successfully!');
+            } catch (error) {
+                console.error('Error updating notes', error);
+                alert('Error updating notes: ' + error.message);
+            }
+        }
+
+        function getStudentRowIndex(studentNumber) {
+            const studentRow = allRows.find(row => row[0] === studentNumber);
+            return studentRow ? allRows.indexOf(studentRow) + 1 : -1;
+        }
+
+        async function showNotesHistory(studentNumber) {
+            const sheetId = '1Uh9jIgUB9t19SZmcqU9SoicwgZDp1MLKuK8I0JQBvD8';
+            const notesHistoryRange = `Notes History!A:D`;
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: sheetId,
+                    range: notesHistoryRange,
+                });
+                const rows = response.result.values;
+                const historyRow = rows.find(row => row[0] === studentNumber);
+
+                if (historyRow) {
+                    const twoWeeksAgo = historyRow[1];
+                    const threeWeeksAgo = historyRow[2];
+                    const fourWeeksAgo = historyRow[3];
+
+                    const historyContent = `
+                        <p><strong>2 Weeks Ago:</strong> ${twoWeeksAgo || ''}</p>
+                        <p><strong>3 Weeks Ago:</strong> ${threeWeeksAgo || ''}</p>
+                        <p><strong>4 Weeks Ago:</strong> ${fourWeeksAgo || ''}</p>
+                    `;
+                    document.getElementById('notesHistoryContent').innerHTML = historyContent;
+                    document.getElementById('popupBackground').style.display = 'block';
+                    document.getElementById('notesHistoryPopup').style.display = 'block';
+                }
+            } catch (error) {
+                console.error("Error fetching notes history", error);
+                alert('Error fetching notes history: ' + JSON.stringify(error));
+            }
+        }
+
+        async function showCheckIns(studentNumber) {
+            const studentData = otherRows.find(row => row[0] === studentNumber);
+
+            if (studentData) {
+                const thisWeek = studentData[8];
+                const thisMonth = studentData[9];
+                const totalCheckIns = studentData[10];
+                const practiceRating = studentData[4];
+                const minimumPractice = studentData[3];
+
+                const checkInsContent = `
+                    <p><strong>This Week:</strong> ${thisWeek || ''}</p>
+                    <p><strong>This Month:</strong> ${thisMonth || ''}</p>
+                    <p><strong>Total Check-Ins:</strong> ${totalCheckIns || ''}</p>
+                    <p><strong>Practice Rating:</strong> ${practiceRating || ''}</p>
+                    <p contenteditable="true" data-student-number="${studentNumber}" data-col-index="3"><strong>Minimum Practice:</strong> ${minimumPractice || ''}</p>
+                `;
+                document.getElementById('checkInsContent').innerHTML = checkInsContent;
+                document.getElementById('popupBackground').style.display = 'block';
+                document.getElementById('checkInsPopup').style.display = 'block';
+            }
+        }
+
+        async function showPlaying(studentNumber) {
+            console.log("showPlaying function called for student:", studentNumber); // Debugging statement
+            const sheetId = '1Uh9jIgUB9t19SZmcqU9SoicwgZDp1MLKuK8I0JQBvD8';
+            const originalRowIndex = getStudentRowIndex(studentNumber);
+            const range = `Other!N${originalRowIndex}:N${originalRowIndex}`;
+            try {
+                const response = await gapi.client.sheets.spreadsheets.values.get({
+                    spreadsheetId: sheetId,
+                    range: range,
+                });
+
+                const values = response.result.values && response.result.values.length > 0 ? response.result.values[0][0] : '';
+                const areasOfFocus = values ? values.split(',').map(option => option.trim()) : [];
+
+                const options = [
+                    "Piano keys", "Note reading", "Treble clef notes", "Bass clef notes", "Playing rhythms", "Counting rhythms", "Rhythm names", "Rhythm beats", "Articulation", "Dynamics", "Technique", "Intervals", "Chords", "Key signatures", "Finger numbers", "Sight reading", "Music patterns", "Scales", "Music history", "Sharps and flats (Accidentals)", "Ear training", "Composition"
+                ];
+
+                const optionsList = options.map(option => `
+                    <option value="${option}" ${areasOfFocus.includes(option) ? 'selected' : ''}>${option}</option>
+                `).join('');
+
+                const playingContent = `
+                    <select id="areasOfFocusSelect" multiple data-student-number="${studentNumber}">
+                        ${optionsList}
+                    </select>
+                `;
+
+                document.getElementById('playingContent').innerHTML = playingContent;
+                document.getElementById('popupBackground').style.display = 'block';
+                document.getElementById('playingPopup').style.display = 'block';
+                console.log("Popup displayed with content:", playingContent); // Debugging statement
+            } catch (error) {
+                console.error("Error fetching playing data", error);
+                alert('Error fetching playing data: ' + JSON.stringify(error));
+            }
+        }
+
+        async function updatePlaying() {
+            const selectElement = document.getElementById('areasOfFocusSelect');
+            const studentNumber = selectElement.getAttribute('data-student-number');
+            const originalRowIndex = getStudentRowIndex(studentNumber);
+            const sheetId = '1Uh9jIgUB9t19SZmcqU9SoicwgZDp1MLKuK8I0JQBvD8';
+            const selectedOptions = Array.from(selectElement.selectedOptions).map(option => option.value).join(', ');
+
+            const data = [
+                { range: `Other!N${originalRowIndex}`, values: [[selectedOptions]] }
+            ];
+
+            try {
+                await gapi.client.sheets.spreadsheets.values.batchUpdate({
+                    spreadsheetId: sheetId,
+                    resource: {
+                        valueInputOption: 'RAW',
+                        data: data
+                    }
+                });
+                alert('Playing data updated successfully!');
+                closePlaying();
+            } catch (error) {
+                console.error('Error updating playing data', error);
+                alert('Error updating playing data: ' + JSON.stringify(error));
+            }
+        }
+
+        async function showEmail(studentNumber, publicNotes) {
+            const contactRow = contactInfo.find(row => row[1] === studentNumber);
+            if (contactRow) {
+                const email = contactRow[2];
+                const emailContent = `
+                    <p><strong>To:</strong> <span id="recipient-email">${email}</span></p>
+                    <p><strong>Message:</strong></p>
+                    <textarea id="emailMessage" rows="10" cols="50">Message from your piano teacher,\n\n${publicNotes}\n\nCheck out the student portal here: www.alexaspianolessons.com/student/${studentNumber}\n\nBest regards,\nYour Teacher\n\nContact information: alexaspianolessons@gmail.com</textarea>
+                `;
+                document.getElementById('emailContent').innerHTML = emailContent;
+                document.getElementById('popupBackground').style.display = 'block';
+                document.getElementById('emailPopup').style.display = 'block';
+            } else {
+                alert('No email found for this student.');
+            }
+        }
+
+        function sendEmail() {
+            const email = document.getElementById('emailContent').querySelector('p strong').innerText;
+            const recipient = document.getElementById('recipient-email').innerText;
+            const subject = 'Weekly Notes from Your Teacher';
+            const body = document.getElementById('emailMessage').value;
+            const mailtoLink = `mailto:${recipient}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+            window.location.href = mailtoLink;
+            closeEmail();
+        }
+
+        function closeNotesHistory() {
+            document.getElementById('popupBackground').style.display = 'none';
+            document.getElementById('notesHistoryPopup').style.display = 'none';
+        }
+
+        function closeCheckIns() {
+            document.getElementById('popupBackground').style.display = 'none';
+            document.getElementById('checkInsPopup').style.display = 'none';
+        }
+
+        function closePlaying() {
+            document.getElementById('popupBackground').style.display = 'none';
+            document.getElementById('playingPopup').style.display = 'none';
+        }
+
+        function closeEmail() {
+            document.getElementById('popupBackground').style.display = 'none';
+            document.getElementById('emailPopup').style.display = 'none';
+        }
+
+        window.onload = function () {
+            gapi.load('client', initializeGapiClient);
+        };
+    </script>
+</body>
+
+</html>
